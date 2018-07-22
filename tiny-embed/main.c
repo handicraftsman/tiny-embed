@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -15,6 +16,8 @@ void display_usage(char* pname) {
   fprintf(stderr, "  -d LEVEL  --working-dir DIR   Working directory [./]\n");
   fprintf(stderr, "  -o FILE   --output      FILE  Output .c file    [./output.c]\n");
   fprintf(stderr, "  -H FILE   --header      FILE  Output .h file    [./output.h]\n");
+  fprintf(stderr, "  -e        --extern            Prepends `extern` to each entry in .h file.\n");
+  fprintf(stderr, "                                Useful in C++ apps.\n");
   exit(1);
 }
 
@@ -26,15 +29,17 @@ int main(int argc, char** argv) {
     {"config-file",   required_argument, NULL, 'c'},
     {"working-dir",   required_argument, NULL, 'd'},
     {"output",        required_argument, NULL, 'o'},
-    {"header",        required_argument, NULL, 'H'}
+    {"header",        required_argument, NULL, 'H'},
+    {"extern",        0,                 NULL, 'e'},
   };
   
   char* p_config_file = "./tiny-embed.txt";
   char* p_working_dir = "./";
   char* p_output      = "./output.c";
   char* p_header      = "./output.h";
+  bool e = false;
   
-  while ((opt = getopt_long(argc, argv, "hc:d:o:H:", long_options, NULL)) != EOF)
+  while ((opt = getopt_long(argc, argv, "hc:d:o:H:e", long_options, NULL)) != EOF)
     switch(opt) {
     case 'h':
       display_usage(argv[0]);
@@ -50,6 +55,9 @@ int main(int argc, char** argv) {
       break;
     case 'H':
       p_header = optarg;
+      break;
+    case 'e':
+      e = true;
       break;
     default:
       exit(2);
@@ -83,7 +91,9 @@ int main(int argc, char** argv) {
   }
   
   fprintf(header_file, "#pragma once\n\n");
-  
+  fprintf(header_file, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n");
+  fprintf(output_file, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n");
+
   char symname[64]; char fname[256];
   int n = 0;
   while ((n = fscanf(config_file, "%64s %256s\n", symname, fname), n != 0 && n != -1)) {
@@ -110,8 +120,12 @@ int main(int argc, char** argv) {
       exit(1);
     }
     
-    fprintf(header_file, "const char %s[%d];\n", symname, (int) l + 1);
-    
+    if (e) {
+      fprintf(header_file, "extern const char %s[%d];\n", symname, (int) l + 1);
+    } else {
+      fprintf(header_file, "const char %s[%d];\n", symname, (int) l + 1);
+    }
+
     fprintf(output_file, "const char %s[] = {", symname);
     
     unsigned char buffer[32];
@@ -128,7 +142,10 @@ int main(int argc, char** argv) {
     
     fclose(input_file);
   }
-    
+  
+  fprintf(header_file, "#ifdef __cplusplus\n}\n#endif\n");
+  fprintf(output_file, "#ifdef __cplusplus\n}\n#endif\n");
+
   fclose(config_file);
   fclose(output_file);
   fclose(header_file);
